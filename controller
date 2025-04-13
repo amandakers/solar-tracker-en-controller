@@ -1,0 +1,106 @@
+#include <WiFi.h>
+#include <esp_now.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// OLED instellingen
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 16
+#define OLED_RESET 26
+#define SCREEN_ADDRESS 0x3C
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Joystick pinnen
+#define LEFT_Y_PIN    32  
+#define RIGHT_Y_PIN   35  
+#define stop 13 
+
+// MAC-adres van de ontvanger
+uint8_t RECEIVER_MAC_ADDR[] = {0xcc, 0xdb, 0xa7, 0x93, 0xe5, 0x34};
+
+// Struct voor ESP-NOW data
+typedef struct struct_message {
+  int leftMotorSpeed;
+  int rightMotorSpeed;
+} struct_message;
+
+struct_message myData;
+
+// OLED-scherm initialiseren
+void setupDisplay() {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println("Unable to initialize OLED");
+    while (1) yield();
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.display();
+}
+
+// OLED-scherm updaten met joystickwaarden
+void updateOled(int leftValue, int rightValue) {
+  display.clearDisplay();
+  display.setCursor(4, 8);
+  display.print("L:"); display.print(leftValue);
+  display.setCursor(64, 8);
+  display.print("R:"); display.print(rightValue);
+  display.display();
+}
+  
+void setup() {
+  Serial.begin(115200);
+  setupDisplay();
+
+  // WiFi en ESP-NOW setup
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW initialization failed!");
+    return;
+  }
+
+  esp_now_peer_info_t peerInfo;
+  memcpy(peerInfo.peer_addr, RECEIVER_MAC_ADDR, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
+}
+
+void loop() {
+  // Lees de joystickwaarden
+  int leftJoystickY = analogRead(LEFT_Y_PIN);
+  int rightJoystickY = analogRead(RIGHT_Y_PIN);
+
+  Serial.print("Raw L: "); Serial.print(analogRead(LEFT_Y_PIN));
+Serial.print(" | Raw R: "); Serial.println(analogRead(RIGHT_Y_PIN));
+
+
+  // Zet de joystickwaarde om naar een symmetrisch PWM-bereik (-1023 tot 1023)
+  myData.leftMotorSpeed = map(leftJoystickY, 0, 4095, -1023, 1023);
+  myData.rightMotorSpeed = map(rightJoystickY, 0, 4095, 1023, -1023);
+
+  int deadzone = 140;
+if (abs(myData.leftMotorSpeed) < deadzone) {
+  myData.leftMotorSpeed = 0;
+}
+if (abs(myData.rightMotorSpeed) < deadzone) {
+  myData.rightMotorSpeed = 0;
+}
+
+  // Stuur de data naar de ontvanger
+  esp_now_send(RECEIVER_MAC_ADDR, (uint8_t *)&myData, sizeof(myData));
+
+  // Update OLED-weergave
+  updateOled(myData.leftMotorSpeed, myData.rightMotorSpeed);
+
+  delay(50);  // Kleine vertraging om de communicatie stabiel te houden
+  Serial.print("L: "); Serial.print(myData.leftMotorSpeed);
+  Serial.print(" | R: "); Serial.println(myData.rightMotorSpeed);
+}

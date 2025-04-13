@@ -1,0 +1,64 @@
+#define DIR_PIN 18
+#define PUL_PIN 19
+
+#define LDR_LEFT 34
+#define LDR_RIGHT 35
+
+#define STOP_PIN1 33  // Links blokkeren
+#define STOP_PIN2 32  // Rechts blokkeren
+
+int threshold = 100;      // Minimaal verschil om te reageren
+int stepDelay = 500;      // Microseconden tussen pulsen
+int stepsPerMove = 4;     // Aantal stappen per aanpassing
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(PUL_PIN, OUTPUT);
+  pinMode(STOP_PIN1, INPUT);
+  pinMode(STOP_PIN2, INPUT);
+}
+
+void loop() {
+  int leftValue = analogRead(LDR_LEFT);
+  int rightValue = analogRead(LDR_RIGHT);
+  int stopLeft = digitalRead(STOP_PIN1);
+  int stopRight = digitalRead(STOP_PIN2);
+
+  Serial.print("STOP_PIN1 (links blokkeren): ");
+  Serial.print(stopLeft == HIGH ? "HIGH" : "LOW");
+  Serial.print(" | STOP_PIN2 (rechts blokkeren): ");
+  Serial.print(stopRight == HIGH ? "HIGH" : "LOW");
+
+  Serial.print(" | Links: ");
+  Serial.print(leftValue);
+  Serial.print(" | Rechts: ");
+  Serial.println(rightValue);
+
+  int difference = leftValue - rightValue;
+
+  if (abs(difference) > threshold) {
+    if (difference > 0 && stopLeft == LOW) {
+      // Licht is sterker links → draai naar links (mits niet geblokkeerd)
+      digitalWrite(DIR_PIN, LOW);
+      doSteps(-stepsPerMove);
+    } else if (difference < 0 && stopRight == LOW) {
+      // Licht is sterker rechts → draai naar rechts (mits niet geblokkeerd)
+      digitalWrite(DIR_PIN, HIGH);
+      doSteps(stepsPerMove);
+    } else {
+      Serial.println("Beweging geblokkeerd door een stopknop.");
+    }
+  } else {
+    delay(100);  // Geen verschil, even rust
+  }
+}
+
+void doSteps(int steps) {
+  for (int i = 0; i < abs(steps); i++) {
+    digitalWrite(PUL_PIN, HIGH);
+    delayMicroseconds(stepDelay);
+    digitalWrite(PUL_PIN, LOW);
+    delayMicroseconds(stepDelay);
+  }
+}
